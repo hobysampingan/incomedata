@@ -100,7 +100,10 @@ st.markdown("""
 class IncomeApp:
     # 1. Konfigurasi Google Sheets
     SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
-    creds = Credentials.from_service_account_file("credentials.json", scopes=SCOPES)
+    #creds = Credentials.from_service_account_file("credentials.json", scopes=SCOPES)
+    #gc = gspread.authorize(creds)
+    service_account_info = st.secrets["google_credentials"]
+    creds = Credentials.from_service_account_info(service_account_info, scopes=SCOPES)
     gc = gspread.authorize(creds)
 
     SHEET_ID = "1Kuy05JjpsZPoYZI0DcdaY7G_2_i63tdJOKTy-PWH26M"  # dari URL Google Sheet
