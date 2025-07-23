@@ -98,12 +98,10 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 class IncomeApp:
+    
     # 1. Konfigurasi Google Sheets
     SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
-    #creds = Credentials.from_service_account_file("credentials.json", scopes=SCOPES)
-    #gc = gspread.authorize(creds)
-    service_account_info = st.secrets["google_credentials"]
-    creds = Credentials.from_service_account_info(service_account_info, scopes=SCOPES)
+    creds = Credentials.from_service_account_file("credentials.json", scopes=SCOPES)
     gc = gspread.authorize(creds)
 
     SHEET_ID = "1Kuy05JjpsZPoYZI0DcdaY7G_2_i63tdJOKTy-PWH26M"  # dari URL Google Sheet
@@ -139,12 +137,14 @@ class IncomeApp:
         
         # Gabungkan data
         merged = pd.merge(df1, df2, left_on='Order ID', right_on='Order/adjustment ID', how='inner')
+
+        unique_orders = merged.drop_duplicates(subset=['Order ID'])
         
         if merged.empty:
             return None, None
         
         # Buat ringkasan
-        summary = merged.groupby(['Seller SKU', 'Product Name', 'Variation'], as_index=False).agg(
+        summary = unique_orders.groupby(['Seller SKU', 'Product Name', 'Variation'], as_index=False).agg(
             TotalQty=('Quantity', 'sum'),
             Revenue=('Total settlement amount', 'sum')
         )
@@ -167,13 +167,15 @@ class IncomeApp:
         
         # Hitung total
         unique_orders = merged_data.drop_duplicates(subset=['Order ID'])
-        total_orders = unique_orders['Order ID'].nunique()
+
+        total_orders  = unique_orders['Order ID'].nunique()
         total_revenue = unique_orders['Total settlement amount'].sum()
-        total_qty = merged_data['Quantity'].sum()
+        total_qty     = unique_orders['Quantity'].sum()
         
         # Ringkasan berdasarkan SKU
+        # AFTER (tambahkan .rename langsung)
         summary_by_sku = (
-            merged_data.groupby('Seller SKU', as_index=False)
+            unique_orders.groupby('Seller SKU', as_index=False)
             .agg({
                 'Quantity': 'sum',
                 'Order ID': 'nunique',
@@ -217,21 +219,22 @@ class IncomeApp:
         
         if date_column:
             try:
+                # 1. tetap pakai merged_data_copy untuk tanggal, tapi aggregate dari unique_orders
                 merged_data_copy = merged_data.copy()
                 merged_data_copy['Order Date'] = pd.to_datetime(merged_data_copy[date_column]).dt.date
+
+                # 2. gabungkan tanggal dengan unique_orders
                 daily_sales = (
-                    merged_data_copy.groupby('Order Date', as_index=False)
-                    .agg({
-                        'Quantity': 'sum',
-                        'Order ID': 'nunique',
-                        'Total settlement amount': 'sum'
-                    })
-                    .rename(columns={
-                        'Quantity': 'Daily Quantity',
-                        'Order ID': 'Daily Orders',
-                        'Total settlement amount': 'Daily Revenue'
-                    })
+                    merged_data_copy[['Order Date', 'Order ID', 'Quantity', 'Total settlement amount']]
+                    .drop_duplicates(subset=['Order ID'])
+                    .groupby('Order Date', as_index=False)
+                    .agg(
+                        Daily_Quantity=('Quantity', 'sum'),
+                        Daily_Orders=('Order ID', 'nunique'),
+                        Daily_Revenue=('Total settlement amount', 'sum')
+                    )
                 )
+
             except:
                 daily_sales = pd.DataFrame({
                     'Order Date': ['Data tidak tersedia'],
@@ -248,7 +251,22 @@ class IncomeApp:
             })
         
         # Produk terbaik berdasarkan profit
-        top_products = summary_data.nlargest(10, 'Profit')
+        # buat ringkasan bersih per produk dari unique_orders
+        top_products = (
+            unique_orders
+            .groupby('Product Name', as_index=False)
+            .agg(
+                TotalQty=('Quantity', 'sum'),
+                Revenue=('Total settlement amount', 'sum')
+            )
+            .assign(
+                Cost=lambda d: d['Product Name'].map(lambda x: app.get_product_cost(x, cost_data)),
+                Total_Cost=lambda d: d['TotalQty'] * d['Cost'],
+                Profit=lambda d: d['Revenue'] - d['Total_Cost'],
+                Profit_Margin=lambda d: (d['Profit'] / d['Revenue'] * 100).round(2)
+            )
+            .nlargest(10, 'Profit')
+        )
         
         # Buat penulis Excel
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
@@ -1187,10 +1205,18 @@ def main():
     
     with tab4:
         st.markdown("### 📋 Detail Data")
+
+
         
         if st.session_state.summary_data is not None:
             # Tabel ringkasan dengan pencarian dan filter
             st.markdown("**📊 Tabel Ringkasan Lengkap**")
+
+            freq = st.session_state.merged_data['Order ID'].value_counts()
+            # Ambil yang muncul lebih dari 1 kali
+            dup_ids = freq[freq > 1]
+            st.write("📋 Order ID yang duplikat:")
+            st.write(dup_ids.index.tolist())
             
             # Filter
             filter_col1, filter_col2, filter_col3 = st.columns(3)
