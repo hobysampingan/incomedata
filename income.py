@@ -1203,101 +1203,190 @@ def main():
     
     with tab3:
         show_advanced_analytics()
+
+    st.markdown("""
+    <style>
+        .main-header h2 { margin-top:0 !important; font-weight:600; }
+    </style>
+    """, unsafe_allow_html=True)
     
     with tab4:
-        st.markdown("### 📋 Detail Data")
+        #st.markdown('<div class="main-header" style="margin-top:0"><h2>📋 Detail Data Lengkap</h2></div>',
+                   # unsafe_allow_html=True)
 
+        if st.session_state.summary_data is None:
+            st.info("ℹ️ Silakan unggah & proses data Anda terlebih dahulu.")
+            st.stop()
 
         
-        if st.session_state.summary_data is not None:
-            # Tabel ringkasan dengan pencarian dan filter
-            st.markdown("**📊 Tabel Ringkasan Lengkap**")
 
-            freq = st.session_state.merged_data['Order ID'].value_counts()
-            # Ambil yang muncul lebih dari 1 kali
-            dup_ids = freq[freq > 1]
-            st.write("📋 Order ID yang duplikat:")
-            st.write(dup_ids.index.tolist())
-            
-            # Filter
-            filter_col1, filter_col2, filter_col3 = st.columns(3)
-            
-            with filter_col1:
-                min_revenue = st.number_input("Pendapatan Minimum", min_value=0, value=0)
-            with filter_col2:
-                min_profit = st.number_input("Profit Minimum", value=0)
-            with filter_col3:
-                min_margin = st.number_input("Margin Minimum %", min_value=0.0, max_value=100.0, value=0.0)
-            
-            # Terapkan filter
-            filtered_data = st.session_state.summary_data[
-                (st.session_state.summary_data['Revenue'] >= min_revenue) &
-                (st.session_state.summary_data['Profit'] >= min_profit) &
-                (st.session_state.summary_data['Profit Margin %'] >= min_margin)
-            ]
-            
-            # Format untuk tampilan
-            display_data = filtered_data.copy()
-            display_data['Revenue'] = display_data['Revenue'].apply(lambda x: f"Rp {x:,.0f}")
-            display_data['Total Cost'] = display_data['Total Cost'].apply(lambda x: f"Rp {x:,.0f}")
-            display_data['Profit'] = display_data['Profit'].apply(lambda x: f"Rp {x:,.0f}")
-            display_data['Share 60%'] = display_data['Share 60%'].apply(lambda x: f"Rp {x:,.0f}")
-            display_data['Share 40%'] = display_data['Share 40%'].apply(lambda x: f"Rp {x:,.0f}")
-            display_data['Profit Margin %'] = display_data['Profit Margin %'].apply(lambda x: f"{x:.1f}%")
-            
-            st.dataframe(display_data, use_container_width=True, hide_index=True)
-            
-            # Ringkasan statistik
-            st.markdown("**📊 Ringkasan Data Tersaring**")
-            st.info("ℹ️ **Catatan:** Metrik di bawah menunjukkan data produk tersaring saja. Untuk total bisnis akurat, lihat Dasbor Kinerja yang menangani perhitungan tingkat pesanan dengan benar.")
-            
-            summary_col1, summary_col2, summary_col3, summary_col4 = st.columns(4)
-            
-            with summary_col1:
-                st.metric("Produk Tersaring", len(filtered_data))
-            with summary_col2:
-                st.metric("Jumlah Pendapatan Produk", f"Rp {filtered_data['Revenue'].sum():,.0f}")
-            with summary_col3:
-                st.metric("Jumlah Profit Produk", f"Rp {filtered_data['Profit'].sum():,.0f}")
-            with summary_col4:
-                avg_margin = filtered_data['Profit Margin %'].mean()
-                st.metric("Margin Rata-rata", f"{avg_margin:.1f}%")
-            
-            # Tambahkan perbandingan dengan total bisnis aktual
-            if st.session_state.merged_data is not None:
-                st.markdown("---")
-                st.markdown("**🔍 Perbandingan Total Bisnis**")
-                
-                # Hitung total bisnis aktual (sama seperti Dasbor Kinerja)
-                unique_orders = st.session_state.merged_data.drop_duplicates(subset=['Order ID'])
-                actual_total_revenue = unique_orders['Total settlement amount'].sum()
-                actual_total_cost = st.session_state.summary_data['Total Cost'].sum()
-                actual_total_profit = actual_total_revenue - actual_total_cost
-                
-                comp_col1, comp_col2, comp_col3 = st.columns(3)
-                
-                with comp_col1:
-                    st.metric(
-                        "Total Pendapatan Aktual", 
-                        f"Rp {actual_total_revenue:,.0f}",
-                        help="Dihitung dari pesanan unik (metode Dasbor Kinerja)"
-                    )
-                with comp_col2:
-                    st.metric(
-                        "Total Profit Aktual", 
-                        f"Rp {actual_total_profit:,.0f}",
-                        help="Pendapatan dikurangi total biaya (metode Dasbor Kinerja)"
-                    )
-                with comp_col3:
-                    filter_coverage = (filtered_data['Revenue'].sum() / actual_total_revenue * 100) if actual_total_revenue > 0 else 0
-                    st.metric(
-                        "Cakupan Filter", 
-                        f"{filter_coverage:.1f}%",
-                        help="Persentase total pendapatan yang dicakup oleh produk tersaring"
-                    )
-        
+        # ------------------------------------------------------------------
+        # 1. Periode Data
+        # ------------------------------------------------------------------
+        merged = st.session_state.merged_data
+        date_cols = [
+            'Order created time(UTC)', 'Order settled time(UTC)',
+            'Order creation time', 'Order creation date', 'Order Date'
+        ]
+        date_col = next((c for c in date_cols if c in merged.columns), None)
+
+        if date_col:
+            try:
+                start = pd.to_datetime(merged[date_col]).min().strftime('%d %b %Y')
+                end   = pd.to_datetime(merged[date_col]).max().strftime('%d %b %Y')
+                st.success(f"📅 **Periode Data:** {start} – {end}")
+            except Exception:
+                st.info("📅 **Periode Data:** tidak dapat ditentukan")
         else:
-            st.info("ℹ️ Tidak ada data untuk ditampilkan. Silakan unggah dan proses data Anda terlebih dahulu.")
+            st.info("📅 **Periode Data:** kolom tanggal tidak ditemukan")
+
+        income = st.session_state.income_data
+        if income is not None and not income.empty:
+            penghasilan_kotor = income['Total revenue'].sum()
+            penghasilan_bersih = income['Total settlement amount'].sum()
+
+            col_kotor, col_bersih = st.columns(2)
+            col_kotor.metric(
+                label="💵 Penghasilan Kotor Sebelum Fee",
+                value=f"Rp {penghasilan_kotor:,.0f}"
+            )
+            col_bersih.metric(
+                label="💰 Penghasilan Bersih",
+                value=f"Rp {penghasilan_bersih:,.0f}"
+            )
+        else:
+            st.info("ℹ️ Data penghasilan belum tersedia")
+
+        # ------------------------------------------------------------------
+        # 2. Ringkasan Duplikat Order
+        # ------------------------------------------------------------------
+        freq = merged['Order ID'].value_counts()
+        dup_ids = freq[freq > 1]
+        st.metric("📊 Order-ID Duplikat kotor", len(dup_ids))
+        if len(dup_ids):
+            with st.expander("Lihat ID yang duplikat"):
+                st.write(", ".join(map(str, dup_ids.index.tolist())))
+
+        # ------------------------------------------------------------------
+        # 3. Filter Tabel
+        # ------------------------------------------------------------------
+        with st.expander("🔍 Filter Produk", expanded=True):
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                min_rev = st.number_input("Pendapatan Min", min_value=0, value=0, step=1000)
+            with col2:
+                min_pro = st.number_input("Profit Min", value=0, step=1000)
+            with col3:
+                min_mar = st.number_input("Margin Min %", min_value=0.0, max_value=100.0, value=0.0, step=0.1)
+
+            filtered = st.session_state.summary_data[
+                (st.session_state.summary_data['Revenue'] >= min_rev) &
+                (st.session_state.summary_data['Profit'] >= min_pro) &
+                (st.session_state.summary_data['Profit Margin %'] >= min_mar)
+            ]
+
+            display = filtered.copy()
+            for c in ['Revenue', 'Total Cost', 'Profit', 'Share 60%', 'Share 40%']:
+                display[c] = display[c].apply(lambda x: f"Rp {x:,.0f}")
+            display['Profit Margin %'] = display['Profit Margin %'].apply(lambda x: f"{x:.1f}%")
+            st.dataframe(display, use_container_width=True, hide_index=True)
+
+        # ------------------------------------------------------------------
+        # 4. Refund & Affiliate Analysis
+        # ------------------------------------------------------------------
+        if st.session_state.income_data is not None:
+            income = st.session_state.income_data
+
+            # --- Refund ---
+            refund_df = income[income['Customer refund'] < 0]
+            refunded_ids = set(refund_df['Order/adjustment ID'].unique())
+
+            st.markdown("---")
+            st.markdown("### 💸 Customer Refund (bersih)")
+            col1, col2 = st.columns(2)
+            with col1:
+                #st.metric("Baris refund", len(refund_df))
+                st.metric("Order ID ter-refund", refund_df['Order/adjustment ID'].nunique())
+            if not refund_df.empty:
+                with st.expander("📋 Daftar Order ID refund"):
+                    st.dataframe(
+                        refund_df[['Order/adjustment ID', 'Customer refund']]
+                        .drop_duplicates()
+                        .sort_values('Order/adjustment ID'),
+                        use_container_width=True, hide_index=True
+                    )
+
+            # --- Affiliate vs Toko ---
+            base = income[~income['Order/adjustment ID'].isin(refunded_ids)].copy()
+
+            aff  = base[base['Affiliate commission'] < 0]
+            tok  = base[base['Affiliate commission'] == 0]
+
+            def calc(df):
+                rev   = df['Total settlement amount'].sum()
+                fees  = df['Total fees'].sum()
+                pct   = (fees / rev * 100) if rev else 0
+                return len(df), fees, pct
+
+            aff_cnt, aff_fee, aff_pct = calc(aff)
+            tok_cnt, tok_fee, tok_pct = calc(tok)
+
+            st.markdown("### 🛍️ Fee Detailed Data")
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Order Affiliate", f"{aff_cnt} pesanan")
+                st.metric("Total Fee Tiktok + Affiliate", f"Rp {aff_fee:,.0f}")
+                st.metric("Rata-rata Fee %", f"{aff_pct:.2f} %")
+            with col2:
+                st.metric("Order Toko", f"{tok_cnt} pesanan")
+                st.metric("Total Fee Tiktok Tanpa Affiliate", f"Rp {tok_fee:,.0f}")
+                st.metric("Rata-rata Fee %", f"{tok_pct:.2f} %")
+
+
+            all_cols = ['Dynamic Commission', 'Affiliate commission', 'TikTok Shop commission fee']
+            available = [c for c in all_cols if c in base.columns]
+
+            if available:
+                st.markdown("---")
+                st.markdown("### 📊 Total Break-down Komisi (bersih refund)")
+                for col in available:
+                    total = base[col].sum()
+                    st.metric(col, f"Rp {total:,.0f}")
+            else:
+                st.info("Kolom komisi tidak ditemukan")
+
+                    # --- Total keseluruhan fee ---
+            total_fee_all = base['Total fees'].sum()
+            st.metric("💰 Total Fee Keseluruhan", f"Rp {total_fee_all:,.0f}")
+
+
+            st.markdown("---")
+            st.markdown("### 📋 Daftar Sumber Orderan Dan Fee")
+            # persiapkan kolom yang ingin ditampilkan
+            cols_show = ['Order/adjustment ID', 'Total revenue', 'Total settlement amount', 'Total fees',
+                        'Dynamic Commission', 'Affiliate commission', 'TikTok Shop commission fee']
+            cols_show = [c for c in cols_show if c in base.columns]
+
+            # gabungkan kedua kategori
+            aff_display = aff[cols_show].copy()
+            aff_display['Jenis'] = 'Affiliate'
+            tok_display = tok[cols_show].copy()
+            tok_display['Jenis'] = 'Toko'
+
+            df_orders = pd.concat([aff_display, tok_display], ignore_index=True)
+
+            # format angka
+            for c in ['Total settlement amount', 'Total fees', 'Total revenue',
+                    'Dynamic Commission', 'Affiliate commission', 'TikTok Shop commission fee']:
+                if c in df_orders.columns:
+                    df_orders[c] = df_orders[c].apply(lambda x: f"Rp {x:,.0f}")
+
+            # tampilkan
+            st.dataframe(df_orders, use_container_width=True, hide_index=True)
+
+            
+            
+
 
 if __name__ == "__main__":
     main()
