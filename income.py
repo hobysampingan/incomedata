@@ -1254,6 +1254,47 @@ def main():
                 st.code(", ".join(map(str, dup_ids.index.tolist()[:10])) + ("..." if len(dup_ids) > 10 else ""))
 
         st.divider()
+        # -----------------------------------------------------------------
+        # METRIK ORDER & PCS (TANPA REFUND & DUPLIKAT)
+        # -----------------------------------------------------------------
+        st.subheader("📊 Ringkasan Order & Kuantitas Bersih")
+
+        # --- hitungan bersih ---------------------------------------------
+        income = st.session_state.income_data
+        no_refund = income[income['Customer refund'] >= 0].drop_duplicates(subset=['Order/adjustment ID'])
+
+        orders = st.session_state.pesanan_data
+        orders_done = orders[orders['Order Status'] == 'Selesai'].drop_duplicates(subset=['Order ID'])
+
+        merged_clean = (
+            pd.merge(orders_done, no_refund,
+                    left_on='Order ID', right_on='Order/adjustment ID', how='inner')
+            .drop_duplicates(subset=['Order ID'])
+        )
+
+        total_orders = merged_clean['Order ID'].nunique()
+        total_pcs    = merged_clean['Quantity'].sum()
+
+        # --- tampilan 2 kolom dengan metric & caption ---------------------
+        col_a, col_b = st.columns(2)
+
+        with col_a:
+            st.metric(
+                label="📦 Total Order (non-refund)",
+                value=f"{total_orders:,}",
+                delta=None
+            )
+            st.caption("Jumlah order unik yang **Selesai** & **tidak refund**.")
+
+        with col_b:
+            st.metric(
+                label="📏 Total PCS Terjual (non-refund)",
+                value=f"{total_pcs:,}",
+                delta=None
+            )
+            st.caption("Total pcs barang dari order tersebut.")
+
+        st.divider()
 
         # =================================================================
         # 2. FINANCIAL OVERVIEW
