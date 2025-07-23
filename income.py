@@ -1204,25 +1204,33 @@ def main():
     with tab3:
         show_advanced_analytics()
 
-    st.markdown("""
-    <style>
-        .main-header h2 { margin-top:0 !important; font-weight:600; }
-    </style>
-    """, unsafe_allow_html=True)
     
-    with tab4:
-        #st.markdown('<div class="main-header" style="margin-top:0"><h2>📋 Detail Data Lengkap</h2></div>',
-                   # unsafe_allow_html=True)
+    # st.write("Baris di summary_data :", len(st.session_state.summary_data))
+    # st.write("Baris di merged_data  :", len(st.session_state.merged_data))
+    st.write("Total settlement amount (income_data):",
+         f"Rp {st.session_state.income_data['Total settlement amount'].sum():,.0f}")
+    st.write("Total Revenue (summary_data):",
+            f"Rp {st.session_state.summary_data['Revenue'].sum():,.0f}")
+    st.write("Grand Total Revenue (summary_data):",
+         f"Rp {st.session_state.summary_data['Revenue'].sum():,.0f}")
 
+
+    with tab4:
+    # Main Header
+        # st.title("📊 Detail Data & Analisis Lengkap")
+        # st.markdown("Dashboard komprehensif untuk analisis performa TikTok Shop Anda")
+        # st.divider()
+
+        # Check if data is available
         if st.session_state.summary_data is None:
-            st.info("ℹ️ Silakan unggah & proses data Anda terlebih dahulu.")
+            st.info("🚀 **Mulai Analisis Data Anda** \n\nSilakan unggah dan proses data Anda terlebih dahulu untuk melihat analisis lengkap.")
             st.stop()
 
+        # =================================================================
+        # 1. DATA OVERVIEW SECTION
+        # =================================================================
+        st.subheader("📅 Ringkasan Periode Data")
         
-
-        # ------------------------------------------------------------------
-        # 1. Periode Data
-        # ------------------------------------------------------------------
         merged = st.session_state.merged_data
         date_cols = [
             'Order created time(UTC)', 'Order settled time(UTC)',
@@ -1230,162 +1238,263 @@ def main():
         ]
         date_col = next((c for c in date_cols if c in merged.columns), None)
 
-        if date_col:
-            try:
-                start = pd.to_datetime(merged[date_col]).min().strftime('%d %b %Y')
-                end   = pd.to_datetime(merged[date_col]).max().strftime('%d %b %Y')
-                st.success(f"📅 **Periode Data:** {start} – {end}")
-            except Exception:
-                st.info("📅 **Periode Data:** tidak dapat ditentukan")
-        else:
-            st.info("📅 **Periode Data:** kolom tanggal tidak ditemukan")
+        col1, col2 = st.columns([1, 1])
+        
+        with col1:
+            if date_col:
+                try:
+                    start = pd.to_datetime(merged[date_col]).min().strftime('%d %b %Y')
+                    end = pd.to_datetime(merged[date_col]).max().strftime('%d %b %Y')
+                    st.success(f"📆 **Periode Data:** {start} — {end}")
+                except Exception:
+                    st.warning("⚠️ Periode data tidak dapat ditentukan")
+            else:
+                st.warning("⚠️ Kolom tanggal tidak ditemukan")
 
+        with col2:
+            # Order duplicates info
+            freq = merged['Order ID'].value_counts()
+            dup_ids = freq[freq > 1]
+            st.metric("🔍 Order ID Duplikat", len(dup_ids))
+
+        if len(dup_ids) > 0:
+            with st.expander("📋 Lihat Detail Order ID Duplikat"):
+                st.write("**Order ID yang terdeteksi duplikat:**")
+                st.code(", ".join(map(str, dup_ids.index.tolist()[:10])) + ("..." if len(dup_ids) > 10 else ""))
+
+        st.divider()
+
+        # =================================================================
+        # 2. FINANCIAL OVERVIEW
+        # =================================================================
+        st.subheader("💰 Ringkasan Keuangan")
+        
         income = st.session_state.income_data
         if income is not None and not income.empty:
             penghasilan_kotor = income['Total revenue'].sum()
             penghasilan_bersih = income['Total settlement amount'].sum()
-
-            col_kotor, col_bersih = st.columns(2)
-            col_kotor.metric(
-                label="💵 Penghasilan Kotor Sebelum Fee",
-                value=f"Rp {penghasilan_kotor:,.0f}"
-            )
-            col_bersih.metric(
-                label="💰 Penghasilan Bersih",
-                value=f"Rp {penghasilan_bersih:,.0f}"
-            )
-        else:
-            st.info("ℹ️ Data penghasilan belum tersedia")
-
-        # ------------------------------------------------------------------
-        # 2. Ringkasan Duplikat Order
-        # ------------------------------------------------------------------
-        freq = merged['Order ID'].value_counts()
-        dup_ids = freq[freq > 1]
-        st.metric("📊 Order-ID Duplikat kotor", len(dup_ids))
-        if len(dup_ids):
-            with st.expander("Lihat ID yang duplikat"):
-                st.write(", ".join(map(str, dup_ids.index.tolist())))
-
-        # ------------------------------------------------------------------
-        # 3. Filter Tabel
-        # ------------------------------------------------------------------
-        with st.expander("🔍 Filter Produk", expanded=True):
+            total_fees = income['Total fees'].sum()
+            
             col1, col2, col3 = st.columns(3)
+            
             with col1:
-                min_rev = st.number_input("Pendapatan Min", min_value=0, value=0, step=1000)
+                st.metric(
+                    label="💵 Penghasilan Kotor",
+                    value=f"Rp {penghasilan_kotor:,.0f}",
+                    help="Total pendapatan sebelum dipotong fee"
+                )
+                
             with col2:
-                min_pro = st.number_input("Profit Min", value=0, step=1000)
+                st.metric(
+                    label="💰 Penghasilan Bersih",
+                    value=f"Rp {penghasilan_bersih:,.0f}",
+                    delta=f"-Rp {total_fees:,.0f}",
+                    delta_color="inverse",
+                    help="Pendapatan setelah dipotong fee platform"
+                )
+                
             with col3:
-                min_mar = st.number_input("Margin Min %", min_value=0.0, max_value=100.0, value=0.0, step=0.1)
+                fee_percentage = (total_fees / penghasilan_kotor * 100) if penghasilan_kotor > 0 else 0
+                st.metric(
+                    label="📊 Persentase Fee",
+                    value=f"{fee_percentage:.2f}%",
+                    help="Persentase fee dari total penghasilan kotor"
+                )
+        else:
+            st.info("ℹ️ Data penghasilan belum tersedia. Pastikan file income sudah diupload.")
 
-            filtered = st.session_state.summary_data[
-                (st.session_state.summary_data['Revenue'] >= min_rev) &
-                (st.session_state.summary_data['Profit'] >= min_pro) &
-                (st.session_state.summary_data['Profit Margin %'] >= min_mar)
-            ]
+        st.divider()
 
+        # =================================================================
+        # 3. PRODUCT FILTER & ANALYSIS
+        # =================================================================
+        st.subheader("🔍 Filter & Analisis Produk")
+
+        # --- Info Grand Total (selalu tampil) ---------------------------
+        grand_total_rev = st.session_state.summary_data['Revenue'].sum()
+        grand_total_pro = st.session_state.summary_data['Profit'].sum()
+
+        col_grand1, col_grand2 = st.columns(2)
+        with col_grand1:
+            st.metric("💵 Grand Total Revenue", f"Rp {grand_total_rev:,.0f}",
+                    help="Sama dengan Penghasilan Bersih di atas")
+        with col_grand2:
+            st.metric("💰 Grand Total Profit", f"Rp {grand_total_pro:,.0f}")
+
+        st.markdown("---")
+
+        # --- Filter (default 0 supaya langsung grand total) -------------
+        with st.container():
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                min_rev = st.number_input("💵 Pendapatan Minimum", min_value=0, value=0, step=10000, format="%d")
+            with col2:
+                min_pro = st.number_input("💰 Profit Minimum", value=0, step=5000, format="%d")
+            with col3:
+                min_mar = st.number_input("📈 Margin Minimum (%)", min_value=0.0, max_value=100.0, value=0.0, step=1.0)
+            with col4:
+                sort_by = st.selectbox("📊 Urutkan berdasarkan",
+                                    ["Revenue", "Profit", "Profit Margin %", "Quantity"])
+
+        # --- Terapkan filter --------------------------------------------
+        filtered = st.session_state.summary_data[
+            (st.session_state.summary_data['Revenue'] >= min_rev) &
+            (st.session_state.summary_data['Profit'] >= min_pro) &
+            (st.session_state.summary_data['Profit Margin %'] >= min_mar)
+        ].sort_values(sort_by, ascending=False)
+
+        # --- Ringkasan filter saat ini ----------------------------------
+        col_sum1, col_sum2, col_sum3 = st.columns(3)
+        with col_sum1:
+            st.metric("📦 Produk Terfilter", len(filtered))
+        with col_sum2:
+            st.metric("💵 Sub-Total Revenue", f"Rp {filtered['Revenue'].sum():,.0f}")
+        with col_sum3:
+            st.metric("💰 Sub-Total Profit", f"Rp {filtered['Profit'].sum():,.0f}")
+
+        # --- Tabel terformat --------------------------------------------
+        if not filtered.empty:
             display = filtered.copy()
             for c in ['Revenue', 'Total Cost', 'Profit', 'Share 60%', 'Share 40%']:
-                display[c] = display[c].apply(lambda x: f"Rp {x:,.0f}")
+                if c in display.columns:
+                    display[c] = display[c].apply(lambda x: f"Rp {x:,.0f}")
             display['Profit Margin %'] = display['Profit Margin %'].apply(lambda x: f"{x:.1f}%")
-            st.dataframe(display, use_container_width=True, hide_index=True)
 
-        # ------------------------------------------------------------------
-        # 4. Refund & Affiliate Analysis
-        # ------------------------------------------------------------------
+            st.markdown("#### 📋 Data Produk Terfilter")
+            st.dataframe(display, use_container_width=True, hide_index=True)
+        else:
+            st.warning("🔍 Tidak ada produk yang memenuhi kriteria.")
+
+        st.divider()
+
+        # =================================================================
+        # 4. REFUND & AFFILIATE ANALYSIS
+        # =================================================================
         if st.session_state.income_data is not None:
             income = st.session_state.income_data
 
-            # --- Refund ---
+            # Refund Analysis
+            st.subheader("💸 Analisis Refund")
+            
             refund_df = income[income['Customer refund'] < 0]
             refunded_ids = set(refund_df['Order/adjustment ID'].unique())
+            total_refund = refund_df['Customer refund'].sum()
 
-            st.markdown("---")
-            st.markdown("### 💸 Customer Refund (bersih)")
-            col1, col2 = st.columns(2)
+            col1, col2, col3 = st.columns(3)
             with col1:
-                #st.metric("Baris refund", len(refund_df))
-                st.metric("Order ID ter-refund", refund_df['Order/adjustment ID'].nunique())
-            if not refund_df.empty:
-                with st.expander("📋 Daftar Order ID refund"):
-                    st.dataframe(
-                        refund_df[['Order/adjustment ID', 'Customer refund']]
-                        .drop_duplicates()
-                        .sort_values('Order/adjustment ID'),
-                        use_container_width=True, hide_index=True
-                    )
-
-            # --- Affiliate vs Toko ---
-            base = income[~income['Order/adjustment ID'].isin(refunded_ids)].copy()
-
-            aff  = base[base['Affiliate commission'] < 0]
-            tok  = base[base['Affiliate commission'] == 0]
-
-            def calc(df):
-                rev   = df['Total settlement amount'].sum()
-                fees  = df['Total fees'].sum()
-                pct   = (fees / rev * 100) if rev else 0
-                return len(df), fees, pct
-
-            aff_cnt, aff_fee, aff_pct = calc(aff)
-            tok_cnt, tok_fee, tok_pct = calc(tok)
-
-            st.markdown("### 🛍️ Fee Detailed Data")
-            col1, col2 = st.columns(2)
-            with col1:
-                st.metric("Order Affiliate", f"{aff_cnt} pesanan")
-                st.metric("Total Fee Tiktok + Affiliate", f"Rp {aff_fee:,.0f}")
-                st.metric("Rata-rata Fee %", f"{aff_pct:.2f} %")
+                st.metric("🔄 Total Order Refund", refund_df['Order/adjustment ID'].nunique())
             with col2:
-                st.metric("Order Toko", f"{tok_cnt} pesanan")
-                st.metric("Total Fee Tiktok Tanpa Affiliate", f"Rp {tok_fee:,.0f}")
-                st.metric("Rata-rata Fee %", f"{tok_pct:.2f} %")
+                st.metric("💸 Total Nilai Refund", f"Rp {abs(total_refund):,.0f}")
+            with col3:
+                refund_rate = (len(refunded_ids) / income['Order/adjustment ID'].nunique() * 100) if len(income) > 0 else 0
+                st.metric("📊 Tingkat Refund", f"{refund_rate:.2f}%")
 
+            if not refund_df.empty:
+                with st.expander("📋 Detail Order yang Di-refund"):
+                    refund_display = refund_df[['Order/adjustment ID', 'Customer refund']].drop_duplicates()
+                    refund_display['Customer refund'] = refund_display['Customer refund'].apply(lambda x: f"Rp {abs(x):,.0f}")
+                    refund_display = refund_display.sort_values('Order/adjustment ID')
+                    st.dataframe(refund_display, use_container_width=True, hide_index=True)
 
+            st.divider()
+
+            # Affiliate vs Store Analysis
+            st.subheader("🤝 Analisis Affiliate vs Toko")
+            
+            base = income[~income['Order/adjustment ID'].isin(refunded_ids)].copy()
+            aff = base[base['Affiliate commission'] < 0]
+            tok = base[base['Affiliate commission'] == 0]
+
+            def calc_metrics(df):
+                rev = df['Total settlement amount'].sum()
+                fees = df['Total fees'].sum()
+                pct = (fees / rev * 100) if rev > 0 else 0
+                return len(df), fees, pct, rev
+
+            aff_cnt, aff_fee, aff_pct, aff_rev = calc_metrics(aff)
+            tok_cnt, tok_fee, tok_pct, tok_rev = calc_metrics(tok)
+
+            # Create comparison tables
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown("**🤝 Order via Affiliate**")
+                st.metric("Jumlah Order", f"{aff_cnt} pesanan")
+                st.metric("Total Revenue", f"Rp {aff_rev:,.0f}")
+                st.metric("Total Fee (TikTok + Affiliate)", f"Rp {aff_fee:,.0f}")
+                st.metric("Rata-rata Fee", f"{aff_pct:.2f}%")
+
+            with col2:
+                st.markdown("**🏪 Order Toko Langsung**")
+                st.metric("Jumlah Order", f"{tok_cnt} pesanan")
+                st.metric("Total Revenue", f"Rp {tok_rev:,.0f}")
+                st.metric("Total Fee (TikTok saja)", f"Rp {tok_fee:,.0f}")
+                st.metric("Rata-rata Fee", f"{tok_pct:.2f}%")
+
+            st.divider()
+
+            # Commission Breakdown
+            st.subheader("💳 Breakdown Komisi & Fee")
+            
             all_cols = ['Dynamic Commission', 'Affiliate commission', 'TikTok Shop commission fee']
             available = [c for c in all_cols if c in base.columns]
 
             if available:
-                st.markdown("---")
-                st.markdown("### 📊 Total Break-down Komisi (bersih refund)")
-                for col in available:
-                    total = base[col].sum()
-                    st.metric(col, f"Rp {total:,.0f}")
+                cols = st.columns(len(available) + 1)
+                
+                for i, col in enumerate(available):
+                    total = abs(base[col].sum())
+                    with cols[i]:
+                        st.metric(
+                            label=col.replace('commission', 'komisi').replace('fee', 'fee'),
+                            value=f"Rp {total:,.0f}"
+                        )
+                
+                # Total fees
+                total_fee_all = base['Total fees'].sum()
+                with cols[-1]:
+                    st.metric("💰 Total Fee Keseluruhan", f"Rp {total_fee_all:,.0f}")
             else:
-                st.info("Kolom komisi tidak ditemukan")
+                st.info("ℹ️ Data breakdown komisi tidak tersedia")
 
-                    # --- Total keseluruhan fee ---
-            total_fee_all = base['Total fees'].sum()
-            st.metric("💰 Total Fee Keseluruhan", f"Rp {total_fee_all:,.0f}")
+            st.divider()
 
-
-            st.markdown("---")
-            st.markdown("### 📋 Daftar Sumber Orderan Dan Fee")
-            # persiapkan kolom yang ingin ditampilkan
-            cols_show = ['Order/adjustment ID', 'Total revenue', 'Total settlement amount', 'Total fees',
-                        'Dynamic Commission', 'Affiliate commission', 'TikTok Shop commission fee']
-            cols_show = [c for c in cols_show if c in base.columns]
-
-            # gabungkan kedua kategori
-            aff_display = aff[cols_show].copy()
-            aff_display['Jenis'] = 'Affiliate'
-            tok_display = tok[cols_show].copy()
-            tok_display['Jenis'] = 'Toko'
-
-            df_orders = pd.concat([aff_display, tok_display], ignore_index=True)
-
-            # format angka
-            for c in ['Total settlement amount', 'Total fees', 'Total revenue',
-                    'Dynamic Commission', 'Affiliate commission', 'TikTok Shop commission fee']:
-                if c in df_orders.columns:
-                    df_orders[c] = df_orders[c].apply(lambda x: f"Rp {x:,.0f}")
-
-            # tampilkan
-            st.dataframe(df_orders, use_container_width=True, hide_index=True)
-
+            # Order Source Table
+            st.subheader("📊 Detail Sumber Order & Fee")
             
+            cols_show = ['Order/adjustment ID', 'Total revenue', 'Total settlement amount', 'Total fees']
+            commission_cols = ['Dynamic Commission', 'Affiliate commission', 'TikTok Shop commission fee']
+            cols_show.extend([c for c in commission_cols if c in base.columns])
+
+            # Prepare display data
+            aff_display = aff[cols_show].copy() if not aff.empty else pd.DataFrame()
+            tok_display = tok[cols_show].copy() if not tok.empty else pd.DataFrame()
             
+            if not aff_display.empty:
+                aff_display['Sumber'] = '🤝 Affiliate'
+            if not tok_display.empty:
+                tok_display['Sumber'] = '🏪 Toko'
+
+            if not aff_display.empty or not tok_display.empty:
+                df_orders = pd.concat([aff_display, tok_display], ignore_index=True)
+                
+                # Format currency columns
+                currency_cols = [c for c in df_orders.columns if c in ['Total settlement amount', 'Total fees', 'Total revenue', 'Dynamic Commission', 'Affiliate commission', 'TikTok Shop commission fee']]
+                for c in currency_cols:
+                    df_orders[c] = df_orders[c].apply(lambda x: f"Rp {abs(x):,.0f}")
+
+                # Add search functionality
+                search_term = st.text_input("🔍 Cari Order ID:", placeholder="Masukkan Order ID untuk pencarian...")
+                if search_term:
+                    df_orders = df_orders[df_orders['Order/adjustment ID'].astype(str).str.contains(search_term, case=False, na=False)]
+                
+                st.dataframe(df_orders, use_container_width=True, hide_index=True)
+            else:
+                st.info("ℹ️ Tidak ada data order yang tersedia untuk ditampilkan")
+
+        # Footer
+        st.divider()
+        st.markdown("📊 **Dashboard Analytics TikTok Shop** | Dibuat untuk membantu analisis bisnis Anda")
 
 
 if __name__ == "__main__":
