@@ -1204,15 +1204,6 @@ def main():
     with tab3:
         show_advanced_analytics()
 
-    
-    # st.write("Baris di summary_data :", len(st.session_state.summary_data))
-    # st.write("Baris di merged_data  :", len(st.session_state.merged_data))
-    st.write("Total settlement amount (income_data):",
-         f"Rp {st.session_state.income_data['Total settlement amount'].sum():,.0f}")
-    st.write("Total Revenue (summary_data):",
-            f"Rp {st.session_state.summary_data['Revenue'].sum():,.0f}")
-    st.write("Grand Total Revenue (summary_data):",
-         f"Rp {st.session_state.summary_data['Revenue'].sum():,.0f}")
 
 
     with tab4:
